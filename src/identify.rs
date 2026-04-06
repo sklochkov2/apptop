@@ -1,19 +1,21 @@
-use std::fs;
 use std::path::Path;
+
+use crate::proc::read_proc_file;
 
 /// Resolves a human-readable application identity for a process using a
 /// priority cascade:
 ///   1. systemd cgroup scope name (best for desktop / systemd-managed apps)
-///   2. `GIO_LAUNCHED_DESKTOP_FILE` / `BAMF_DESKTOP_FILE_HINT` env vars
-///   3. Interpreter-aware cmdline parsing (python, node, java, …)
+///   2. Interpreter-aware cmdline parsing (python, node, java, …)
+///   3. `GIO_LAUNCHED_DESKTOP_FILE` / `BAMF_DESKTOP_FILE_HINT` env vars
 ///   4. Raw executable path (fallback — always works)
 ///
-/// Each level is attempted lazily: the more expensive reads (environ, cmdline)
-/// are only performed when cheaper signals fail to produce a useful identity.
-pub fn resolve(pid_dir: &Path, exe: &str) -> String {
-    try_cgroup(pid_dir)
-        .or_else(|| try_environ(pid_dir))
-        .or_else(|| try_interpreter(pid_dir, exe))
+/// Each level is attempted lazily and in cost order: cgroup and cmdline are
+/// small files (~100-700 bytes), while environ can be multiple KiB and is
+/// tried last to avoid the expense for the common case.
+pub fn resolve(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> String {
+    try_cgroup(pid_dir, buf)
+        .or_else(|| try_interpreter(pid_dir, exe, buf))
+        .or_else(|| try_environ(pid_dir, buf))
         .unwrap_or_else(|| exe.to_string())
 }
 
@@ -21,9 +23,10 @@ pub fn resolve(pid_dir: &Path, exe: &str) -> String {
 // 1. Cgroup scope / service
 // ---------------------------------------------------------------------------
 
-fn try_cgroup(pid_dir: &Path) -> Option<String> {
-    let content = fs::read_to_string(pid_dir.join("cgroup")).ok()?;
-    let cg_path = cgroup_path(&content)?;
+fn try_cgroup(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<String> {
+    read_proc_file(&pid_dir.join("cgroup"), buf)?;
+    let content = std::str::from_utf8(buf).ok()?;
+    let cg_path = cgroup_path(content)?;
     let component = cg_path.rsplit('/').next()?;
 
     if component.starts_with("vte-spawn-")
@@ -108,48 +111,15 @@ fn parse_system_service(cg_path: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Desktop-environment environment variable hints
+// 2. Interpreter-aware cmdline sniffing
 // ---------------------------------------------------------------------------
 
-fn try_environ(pid_dir: &Path) -> Option<String> {
-    let content = fs::read(pid_dir.join("environ")).ok()?;
-
-    for entry in content.split(|&b| b == 0) {
-        let Ok(s) = std::str::from_utf8(entry) else {
-            continue;
-        };
-        for prefix in [
-            "GIO_LAUNCHED_DESKTOP_FILE=",
-            "BAMF_DESKTOP_FILE_HINT=",
-        ] {
-            if let Some(path) = s.strip_prefix(prefix) {
-                if let Some(name) = desktop_file_to_name(path) {
-                    if !is_terminal(&name) {
-                        return Some(name);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn desktop_file_to_name(path: &str) -> Option<String> {
-    let filename = path.rsplit('/').next()?;
-    let name = filename.strip_suffix(".desktop").unwrap_or(filename);
-    (!name.is_empty()).then(|| name.to_string())
-}
-
-// ---------------------------------------------------------------------------
-// 3. Interpreter-aware cmdline sniffing
-// ---------------------------------------------------------------------------
-
-fn try_interpreter(pid_dir: &Path, exe: &str) -> Option<String> {
+fn try_interpreter(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> Option<String> {
     let basename = exe.rsplit('/').next().unwrap_or(exe);
     let label = interpreter_label(basename)?;
 
-    let raw = fs::read(pid_dir.join("cmdline")).ok()?;
-    let args: Vec<&str> = raw
+    read_proc_file(&pid_dir.join("cmdline"), buf)?;
+    let args: Vec<&str> = buf
         .split(|&b| b == 0)
         .filter(|s| !s.is_empty())
         .filter_map(|s| std::str::from_utf8(s).ok())
@@ -242,6 +212,39 @@ fn first_positional(args: &[&str]) -> Option<String> {
     args.iter()
         .find(|a| !a.starts_with('-'))
         .map(|a| a.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// 3. Desktop-environment environment variable hints
+// ---------------------------------------------------------------------------
+
+fn try_environ(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<String> {
+    read_proc_file(&pid_dir.join("environ"), buf)?;
+
+    for entry in buf.split(|&b| b == 0) {
+        let Ok(s) = std::str::from_utf8(entry) else {
+            continue;
+        };
+        for prefix in [
+            "GIO_LAUNCHED_DESKTOP_FILE=",
+            "BAMF_DESKTOP_FILE_HINT=",
+        ] {
+            if let Some(path) = s.strip_prefix(prefix) {
+                if let Some(name) = desktop_file_to_name(path) {
+                    if !is_terminal(&name) {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn desktop_file_to_name(path: &str) -> Option<String> {
+    let filename = path.rsplit('/').next()?;
+    let name = filename.strip_suffix(".desktop").unwrap_or(filename);
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 // ---------------------------------------------------------------------------

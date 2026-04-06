@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::Path;
 
 use crate::identify;
@@ -13,9 +14,19 @@ pub struct AppMemInfo {
     pub num_procs: u32,
 }
 
-fn parse_smaps_rollup(pid_dir: &Path) -> Option<(u64, u64)> {
-    let smaps = pid_dir.join("smaps_rollup");
-    let content = fs::read_to_string(smaps).ok()?;
+/// Read a proc file into a pre-allocated buffer using a single data read
+/// (proc files report size 0, so `fs::read_to_string` starts with a tiny
+/// buffer and grows it across many syscalls; pre-allocating avoids that).
+pub fn read_proc_file(path: &Path, buf: &mut Vec<u8>) -> Option<()> {
+    buf.clear();
+    let mut file = File::open(path).ok()?;
+    file.read_to_end(buf).ok()?;
+    Some(())
+}
+
+fn parse_smaps_rollup(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<(u64, u64)> {
+    read_proc_file(&pid_dir.join("smaps_rollup"), buf)?;
+    let content = std::str::from_utf8(buf).ok()?;
 
     let mut pss: u64 = 0;
     let mut swap_pss: u64 = 0;
@@ -57,6 +68,8 @@ pub fn collect_app_memory() -> Vec<AppMemInfo> {
         return Vec::new();
     };
 
+    let mut buf = Vec::with_capacity(8192);
+
     for entry in entries.flatten() {
         let fname = entry.file_name();
         let fname_str = fname.to_string_lossy();
@@ -68,11 +81,11 @@ pub fn collect_app_memory() -> Vec<AppMemInfo> {
         let Some(exe) = resolve_exe(&pid_dir) else {
             continue;
         };
-        let Some((pss, swp)) = parse_smaps_rollup(&pid_dir) else {
+        let Some((pss, swp)) = parse_smaps_rollup(&pid_dir, &mut buf) else {
             continue;
         };
 
-        let app_name = identify::resolve(&pid_dir, &exe);
+        let app_name = identify::resolve(&pid_dir, &exe, &mut buf);
 
         *pss_map.entry(app_name.clone()).or_default() += pss;
         *swp_map.entry(app_name.clone()).or_default() += swp;
