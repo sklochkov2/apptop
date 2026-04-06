@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::identify;
+
 #[derive(Debug, Clone)]
 pub struct AppMemInfo {
-    pub exe: String,
+    pub name: String,
     pub pss_kib: u64,
     pub swap_kib: u64,
     pub total_kib: u64,
@@ -56,9 +58,9 @@ pub fn collect_app_memory() -> Vec<AppMemInfo> {
     };
 
     for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if !name_str.chars().all(|c| c.is_ascii_digit()) {
+        let fname = entry.file_name();
+        let fname_str = fname.to_string_lossy();
+        if !fname_str.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
         let pid_dir = entry.path();
@@ -70,18 +72,20 @@ pub fn collect_app_memory() -> Vec<AppMemInfo> {
             continue;
         };
 
-        *pss_map.entry(exe.clone()).or_default() += pss;
-        *swp_map.entry(exe.clone()).or_default() += swp;
-        *cnt_map.entry(exe).or_default() += 1;
+        let app_name = identify::resolve(&pid_dir, &exe);
+
+        *pss_map.entry(app_name.clone()).or_default() += pss;
+        *swp_map.entry(app_name.clone()).or_default() += swp;
+        *cnt_map.entry(app_name).or_default() += 1;
     }
 
     pss_map
         .into_iter()
-        .map(|(exe, pss_kib)| {
-            let swap_kib = swp_map.get(&exe).copied().unwrap_or(0);
+        .map(|(name, pss_kib)| {
+            let swap_kib = swp_map.get(&name).copied().unwrap_or(0);
             AppMemInfo {
-                num_procs: cnt_map.get(&exe).copied().unwrap_or(0),
-                exe,
+                num_procs: cnt_map.get(&name).copied().unwrap_or(0),
+                name,
                 pss_kib,
                 swap_kib,
                 total_kib: pss_kib + swap_kib,

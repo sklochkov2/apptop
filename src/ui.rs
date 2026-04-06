@@ -94,7 +94,7 @@ fn draw_table(frame: &mut Frame, app: &App, area: Rect) {
             format_mib(e.pss_kib),
             format_mib(e.swap_kib),
             format_mib(e.total_kib),
-            e.exe.clone(),
+            e.name.clone(),
         ])
     });
 

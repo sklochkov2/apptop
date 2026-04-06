@@ -1,4 +1,5 @@
 mod app;
+mod identify;
 mod proc;
 mod ui;
 
@@ -92,7 +93,7 @@ fn run_batch(sort_col: SortColumn, delay: Duration, iterations: u64) -> anyhow::
                 format_mib(e.pss_kib),
                 format_mib(e.swap_kib),
                 format_mib(e.total_kib),
-                e.exe,
+                e.name,
             );
         }
         println!();

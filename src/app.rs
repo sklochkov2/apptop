@@ -86,7 +86,7 @@ impl App {
                 SortColumn::Swap => a.swap_kib.cmp(&b.swap_kib),
                 SortColumn::Total => a.total_kib.cmp(&b.total_kib),
                 SortColumn::Procs => a.num_procs.cmp(&b.num_procs),
-                SortColumn::Name => a.exe.cmp(&b.exe),
+                SortColumn::Name => a.name.cmp(&b.name),
             };
             if asc { ord } else { ord.reverse() }
         });
