@@ -1,0 +1,13 @@
+Package: apptop
+Version: @VERSION@-1
+Architecture: @ARCH@
+Maintainer: sklochkov2 <sklochkov2@users.noreply.github.com>
+Homepage: https://github.com/sklochkov2/apptop
+Section: utils
+Priority: optional
+Description: Top-like memory usage viewer aggregated by application
+ A top-like terminal utility that aggregates memory usage by application
+ rather than by individual process. It reads /proc/<pid>/smaps_rollup and
+ aggregates proportional set size (PSS) and swap usage per application,
+ using cgroup scope names, environment variable hints, and
+ interpreter-aware cmdline parsing to identify applications.

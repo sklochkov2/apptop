@@ -1,0 +1,17 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: apptop
+Upstream-Contact: https://github.com/sklochkov2/apptop/issues
+Source: https://github.com/sklochkov2/apptop
+
+Files: *
+Copyright: sklochkov2
+License: Unlicense
+
+License: Unlicense
+ This is free and unencumbered software released into the public domain.
+ .
+ Anyone is free to copy, modify, publish, use, compile, sell, or
+ distribute this software, either in source code form or as a compiled
+ binary, for any purpose, commercial or non-commercial, and by any means.
+ .
+ For more information, please refer to <https://unlicense.org>

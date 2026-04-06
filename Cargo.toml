@@ -3,7 +3,8 @@ name = "apptop"
 version = "0.1.0"
 edition = "2024"
 description = "A top-like utility that aggregates memory usage by application"
-license = "MIT"
+license = "Unlicense"
+repository = "https://github.com/sklochkov2/apptop"
 
 [dependencies]
 anyhow = "1.0.102"
