@@ -99,6 +99,8 @@ On systemd-based systems, desktop environments assign each launched application 
 
 Desktop-environment launcher prefixes (`gnome-`, `kde-`, `plasma-`, …) are stripped automatically. Terminal emulator scopes (`gnome-terminal-server`, `alacritty`, `kitty`, …) and VTE child scopes (`vte-spawn-*`) are recognized and skipped so that processes launched *inside* a terminal fall through to the next identification level.
 
+**Chromium cross-validation:** Electron/CEF apps that don't set their own `WM_CLASS` or Wayland `app-id` inherit Chromium's default, causing systemd to place them in an `org.chromium.Chromium` scope despite being a different application (e.g. Cisco Webex). To handle this, `apptop` cross-checks Chromium-generic cgroup names against the `/proc/<pid>/exe` path — if the executable doesn't look like an actual Chromium binary, the cgroup result is discarded and the cascade falls through to a later heuristic that can provide the real identity.
+
 This is the strongest signal: all of Firefox's renderer/GPU/utility processes share one scope, and Steam's `steam` + `steamwebhelper` binaries are correctly merged into a single **steam** entry.
 
 #### 2. Environment variable hints
