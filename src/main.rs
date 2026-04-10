@@ -7,18 +7,21 @@ use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
+use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use crossterm::ExecutableCommand;
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
-use app::{format_mib, App, SortColumn};
+use app::{App, SortColumn, format_mb};
 
 #[derive(Parser)]
-#[command(name = "apptop", about = "Top-like memory usage viewer aggregated by application")]
+#[command(
+    name = "apptop",
+    about = "Top-like memory usage viewer aggregated by application"
+)]
 struct Cli {
     /// Delay between updates in seconds
     #[arg(short = 'd', long = "delay", default_value_t = 2.0)]
@@ -32,7 +35,7 @@ struct Cli {
     #[arg(short = 'n', long = "iterations", default_value_t = 0)]
     iterations: u64,
 
-    /// Sort column: pss, swap, total, procs, name
+    /// Sort column: user, procs, threads, pss, swap, total, oom, name
     #[arg(short = 's', long = "sort", default_value = "total")]
     sort: String,
 }
@@ -70,29 +73,36 @@ fn run_batch(sort_col: SortColumn, delay: Duration, iterations: u64) -> anyhow::
         iter += 1;
 
         println!(
-            "apptop — {} apps, {} procs | PSS: {} Swap: {} Total: {}",
+            "apptop — {} apps, {} procs, {} threads | PSS: {} Swap: {} Total: {}",
             app.entries.len(),
             app.total_procs,
-            format_mib(app.total_pss),
-            format_mib(app.total_swap),
-            format_mib(app.total_mem),
+            app.total_threads,
+            format_mb(app.total_pss),
+            format_mb(app.total_swap),
+            format_mb(app.total_mem),
         );
         println!(
-            "{:>6} {:>12} {:>12} {:>12}  {}",
+            "{:<8} {:>6} {:>6} {:>12} {:>12} {:>12} {:>5}  {}",
+            SortColumn::User.label(),
             SortColumn::Procs.label(),
+            SortColumn::Threads.label(),
             SortColumn::Pss.label(),
             SortColumn::Swap.label(),
             SortColumn::Total.label(),
+            SortColumn::Oom.label(),
             SortColumn::Name.label(),
         );
 
         for e in &app.entries {
             println!(
-                "{:>6} {:>12} {:>12} {:>12}  {}",
+                "{:<8} {:>6} {:>6} {:>12} {:>12} {:>12} {:>5}  {}",
+                e.user,
                 e.num_procs,
-                format_mib(e.pss_kib),
-                format_mib(e.swap_kib),
-                format_mib(e.total_kib),
+                e.threads,
+                format_mb(e.pss_kb),
+                format_mb(e.swap_kb),
+                format_mb(e.total_kb),
+                e.oom_max,
                 e.name,
             );
         }
@@ -148,11 +158,14 @@ fn tui_loop(
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
                     KeyCode::Char('s') => app.cycle_sort(),
                     KeyCode::Char('r') | KeyCode::Char('R') => app.toggle_sort_order(),
-                    KeyCode::Char('1') => app.set_sort(SortColumn::Procs),
-                    KeyCode::Char('2') => app.set_sort(SortColumn::Pss),
-                    KeyCode::Char('3') => app.set_sort(SortColumn::Swap),
-                    KeyCode::Char('4') => app.set_sort(SortColumn::Total),
-                    KeyCode::Char('5') => app.set_sort(SortColumn::Name),
+                    KeyCode::Char('1') => app.set_sort(SortColumn::User),
+                    KeyCode::Char('2') => app.set_sort(SortColumn::Procs),
+                    KeyCode::Char('3') => app.set_sort(SortColumn::Threads),
+                    KeyCode::Char('4') => app.set_sort(SortColumn::Pss),
+                    KeyCode::Char('5') => app.set_sort(SortColumn::Swap),
+                    KeyCode::Char('6') => app.set_sort(SortColumn::Total),
+                    KeyCode::Char('7') => app.set_sort(SortColumn::Oom),
+                    KeyCode::Char('8') => app.set_sort(SortColumn::Name),
                     KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
                     KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
                     KeyCode::PageUp => app.scroll_page_up(20),

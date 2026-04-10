@@ -10,7 +10,7 @@ use crate::proc::read_proc_file;
 ///   4. Raw executable path (fallback — always works)
 ///
 /// Each level is attempted lazily and in cost order: cgroup and cmdline are
-/// small files (~100-700 bytes), while environ can be multiple KiB and is
+/// small files (~100-700 bytes), while environ can be multiple KB and is
 /// tried last to avoid the expense for the common case.
 pub fn resolve(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> String {
     try_cgroup(pid_dir, exe, buf)
@@ -77,9 +77,7 @@ fn cgroup_path(content: &str) -> Option<String> {
 /// `app-gnome-org.gnome.Software-9150.scope`      → "org.gnome.Software"
 fn parse_app_scope(scope: &str) -> Option<String> {
     let scope = strip_deleted(scope);
-    let inner = scope
-        .strip_prefix("app-")?
-        .strip_suffix(".scope")?;
+    let inner = scope.strip_prefix("app-")?.strip_suffix(".scope")?;
 
     let last_sep = inner.rfind('-')?;
     let raw_name = &inner[..last_sep];
@@ -207,8 +205,15 @@ fn extract_java_main(args: &[&str]) -> Option<String> {
             // flags that consume the next argument as a value
             if matches!(
                 arg,
-                "-cp" | "-classpath" | "--class-path" | "--module-path" | "-p"
-                    | "--add-modules" | "--add-exports" | "--add-opens" | "--add-reads"
+                "-cp"
+                    | "-classpath"
+                    | "--class-path"
+                    | "--module-path"
+                    | "-p"
+                    | "--add-modules"
+                    | "--add-exports"
+                    | "--add-opens"
+                    | "--add-reads"
             ) {
                 it.next();
             }
@@ -237,10 +242,7 @@ fn try_environ(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<String> {
         let Ok(s) = std::str::from_utf8(entry) else {
             continue;
         };
-        for prefix in [
-            "GIO_LAUNCHED_DESKTOP_FILE=",
-            "BAMF_DESKTOP_FILE_HINT=",
-        ] {
+        for prefix in ["GIO_LAUNCHED_DESKTOP_FILE=", "BAMF_DESKTOP_FILE_HINT="] {
             if let Some(path) = s.strip_prefix(prefix) {
                 if let Some(name) = desktop_file_to_name(path) {
                     if !is_terminal(&name) {
@@ -268,9 +270,7 @@ fn desktop_file_to_name(path: &str) -> Option<String> {
 /// `gnome-org.gnome.Software` → `org.gnome.Software`
 /// `org.chromium.Chromium`    → `org.chromium.Chromium` (no match, unchanged)
 fn strip_launcher_prefix(s: &str) -> &str {
-    const PREFIXES: &[&str] = &[
-        "gnome-", "kde-", "plasma-", "xfce-", "sway-", "hyprland-",
-    ];
+    const PREFIXES: &[&str] = &["gnome-", "kde-", "plasma-", "xfce-", "sway-", "hyprland-"];
     for prefix in PREFIXES {
         if let Some(rest) = s.strip_prefix(prefix) {
             if !rest.is_empty() {
@@ -443,7 +443,9 @@ mod tests {
     #[test]
     fn system_service_ignores_user_slice() {
         assert_eq!(
-            parse_system_service("/user.slice/user-1000.slice/user@1000.service/app.slice/gnome-terminal-server.service"),
+            parse_system_service(
+                "/user.slice/user-1000.slice/user@1000.service/app.slice/gnome-terminal-server.service"
+            ),
             None
         );
     }
@@ -466,7 +468,10 @@ mod tests {
 
     #[test]
     fn python_dash_c() {
-        assert_eq!(extract_python_script(&["-c", "print(1)"]), Some("-c".into()));
+        assert_eq!(
+            extract_python_script(&["-c", "print(1)"]),
+            Some("-c".into())
+        );
     }
 
     #[test]
@@ -489,10 +494,7 @@ mod tests {
     fn unescape_mixed() {
         assert_eq!(unescape_systemd("hello\\x2dworld"), "hello-world");
         assert_eq!(unescape_systemd("no_escapes"), "no_escapes");
-        assert_eq!(
-            unescape_systemd("a\\x2db\\x2ec"),
-            "a-b.c"
-        );
+        assert_eq!(unescape_systemd("a\\x2db\\x2ec"), "a-b.c");
     }
 
     #[test]
@@ -508,8 +510,12 @@ mod tests {
     #[test]
     fn exe_looks_chromium_positive() {
         assert!(exe_looks_chromium("/usr/lib/chromium/chromium"));
-        assert!(exe_looks_chromium("/usr/lib/chromium-browser/chromium-browser"));
-        assert!(exe_looks_chromium("/snap/chromium/current/usr/lib/chromium-browser/chrome"));
+        assert!(exe_looks_chromium(
+            "/usr/lib/chromium-browser/chromium-browser"
+        ));
+        assert!(exe_looks_chromium(
+            "/snap/chromium/current/usr/lib/chromium-browser/chrome"
+        ));
     }
 
     #[test]

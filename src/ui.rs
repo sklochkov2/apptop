@@ -1,10 +1,10 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
-use ratatui::Frame;
 
-use crate::app::{format_mib, App, SortColumn};
+use crate::app::{App, SortColumn, format_mb};
 
 fn header_style() -> Style {
     Style::default()
@@ -37,7 +37,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
 fn draw_summary(frame: &mut Frame, app: &App, area: Rect) {
     let text = vec![
         Line::from(vec![
-            Span::styled("apptop", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "apptop",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" — "),
             Span::styled(
                 format!("{} apps", app.entries.len()),
@@ -48,22 +53,26 @@ fn draw_summary(frame: &mut Frame, app: &App, area: Rect) {
                 format!("{} procs", app.total_procs),
                 Style::default().fg(Color::Yellow),
             ),
+            Span::raw(", "),
+            Span::styled(
+                format!("{} threads", app.total_threads),
+                Style::default().fg(Color::Yellow),
+            ),
         ]),
         Line::from(vec![
             Span::raw("PSS: "),
-            Span::styled(
-                format_mib(app.total_pss),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::styled(format_mb(app.total_pss), Style::default().fg(Color::Cyan)),
             Span::raw("  Swap: "),
             Span::styled(
-                format_mib(app.total_swap),
+                format_mb(app.total_swap),
                 Style::default().fg(Color::Magenta),
             ),
             Span::raw("  Total: "),
             Span::styled(
-                format_mib(app.total_mem),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                format_mb(app.total_mem),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
             ),
         ]),
     ];
@@ -74,13 +83,8 @@ fn draw_table(frame: &mut Frame, app: &App, area: Rect) {
     let sc = app.sort_col;
     let asc = app.sort_ascending;
 
-    let header_cells = [
-        format!("{}{}", SortColumn::Procs.label(), sort_indicator(SortColumn::Procs, sc, asc)),
-        format!("{}{}", SortColumn::Pss.label(), sort_indicator(SortColumn::Pss, sc, asc)),
-        format!("{}{}", SortColumn::Swap.label(), sort_indicator(SortColumn::Swap, sc, asc)),
-        format!("{}{}", SortColumn::Total.label(), sort_indicator(SortColumn::Total, sc, asc)),
-        format!("{}{}", SortColumn::Name.label(), sort_indicator(SortColumn::Name, sc, asc)),
-    ];
+    let header_cells =
+        SortColumn::ALL.map(|col| format!("{}{}", col.label(), sort_indicator(col, sc, asc)));
 
     let header = Row::new(header_cells).style(header_style()).height(1);
 
@@ -90,19 +94,25 @@ fn draw_table(frame: &mut Frame, app: &App, area: Rect) {
 
     let rows = visible.iter().map(|e| {
         Row::new(vec![
+            e.user.clone(),
             format!("{}", e.num_procs),
-            format_mib(e.pss_kib),
-            format_mib(e.swap_kib),
-            format_mib(e.total_kib),
+            format!("{}", e.threads),
+            format_mb(e.pss_kb),
+            format_mb(e.swap_kb),
+            format_mb(e.total_kb),
+            format!("{}", e.oom_max),
             e.name.clone(),
         ])
     });
 
     let widths = [
+        Constraint::Length(8),
+        Constraint::Length(6),
         Constraint::Length(6),
         Constraint::Length(12),
         Constraint::Length(12),
         Constraint::Length(12),
+        Constraint::Length(5),
         Constraint::Fill(1),
     ];
 
@@ -123,19 +133,54 @@ fn draw_table(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_help(frame: &mut Frame, area: Rect) {
     let help = Line::from(vec![
-        Span::styled(" q", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " q",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Quit  "),
-        Span::styled("s", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "s",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Sort  "),
-        Span::styled("r", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "r",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Reverse  "),
-        Span::styled("1-5", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "1-8",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Sort col  "),
-        Span::styled("↑↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "↑↓",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Scroll  "),
-        Span::styled("PgUp/Dn", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "PgUp/Dn",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Page  "),
-        Span::styled("Home/End", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Home/End",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" Jump"),
     ]);
     frame.render_widget(Paragraph::new(help), area);

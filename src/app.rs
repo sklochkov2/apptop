@@ -1,21 +1,27 @@
-use crate::proc::{collect_app_memory, AppMemInfo};
+use crate::proc::{AppMemInfo, collect_app_memory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortColumn {
+    User,
+    Procs,
+    Threads,
     Pss,
     Swap,
     Total,
-    Procs,
+    Oom,
     Name,
 }
 
 impl SortColumn {
     pub fn from_str_loose(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
+            "user" | "usr" => Some(Self::User),
+            "procs" | "proc" | "nproc" | "nprocs" => Some(Self::Procs),
+            "threads" | "thr" | "thread" => Some(Self::Threads),
             "pss" | "rss" => Some(Self::Pss),
             "swap" | "swp" => Some(Self::Swap),
             "total" | "tot" => Some(Self::Total),
-            "procs" | "proc" | "nproc" | "nprocs" => Some(Self::Procs),
+            "oom" => Some(Self::Oom),
             "name" | "exe" | "cmd" => Some(Self::Name),
             _ => None,
         }
@@ -23,19 +29,25 @@ impl SortColumn {
 
     pub fn label(self) -> &'static str {
         match self {
+            Self::User => "USER",
+            Self::Procs => "NPROC",
+            Self::Threads => "THR",
             Self::Pss => "PSS",
             Self::Swap => "SWAP",
             Self::Total => "TOTAL",
-            Self::Procs => "NPROC",
+            Self::Oom => "OOM",
             Self::Name => "COMMAND",
         }
     }
 
-    pub const ALL: [SortColumn; 5] = [
+    pub const ALL: [SortColumn; 8] = [
+        Self::User,
+        Self::Procs,
+        Self::Threads,
         Self::Pss,
         Self::Swap,
         Self::Total,
-        Self::Procs,
+        Self::Oom,
         Self::Name,
     ];
 }
@@ -49,6 +61,7 @@ pub struct App {
     pub total_swap: u64,
     pub total_mem: u64,
     pub total_procs: u32,
+    pub total_threads: u32,
 }
 
 impl App {
@@ -62,16 +75,18 @@ impl App {
             total_swap: 0,
             total_mem: 0,
             total_procs: 0,
+            total_threads: 0,
         }
     }
 
     pub fn refresh(&mut self) {
         let mut entries = collect_app_memory();
         self.sort_entries(&mut entries);
-        self.total_pss = entries.iter().map(|e| e.pss_kib).sum();
-        self.total_swap = entries.iter().map(|e| e.swap_kib).sum();
-        self.total_mem = entries.iter().map(|e| e.total_kib).sum();
+        self.total_pss = entries.iter().map(|e| e.pss_kb).sum();
+        self.total_swap = entries.iter().map(|e| e.swap_kb).sum();
+        self.total_mem = entries.iter().map(|e| e.total_kb).sum();
         self.total_procs = entries.iter().map(|e| e.num_procs).sum();
+        self.total_threads = entries.iter().map(|e| e.threads).sum();
         self.entries = entries;
         if self.scroll_offset >= self.entries.len() {
             self.scroll_offset = self.entries.len().saturating_sub(1);
@@ -82,10 +97,13 @@ impl App {
         let asc = self.sort_ascending;
         entries.sort_by(|a, b| {
             let ord = match self.sort_col {
-                SortColumn::Pss => a.pss_kib.cmp(&b.pss_kib),
-                SortColumn::Swap => a.swap_kib.cmp(&b.swap_kib),
-                SortColumn::Total => a.total_kib.cmp(&b.total_kib),
+                SortColumn::User => a.user.cmp(&b.user),
                 SortColumn::Procs => a.num_procs.cmp(&b.num_procs),
+                SortColumn::Threads => a.threads.cmp(&b.threads),
+                SortColumn::Pss => a.pss_kb.cmp(&b.pss_kb),
+                SortColumn::Swap => a.swap_kb.cmp(&b.swap_kb),
+                SortColumn::Total => a.total_kb.cmp(&b.total_kb),
+                SortColumn::Oom => a.oom_max.cmp(&b.oom_max),
                 SortColumn::Name => a.name.cmp(&b.name),
             };
             if asc { ord } else { ord.reverse() }
@@ -137,7 +155,8 @@ impl App {
     }
 
     pub fn scroll_page_down(&mut self, page_size: usize) {
-        self.scroll_offset = (self.scroll_offset + page_size).min(self.entries.len().saturating_sub(1));
+        self.scroll_offset =
+            (self.scroll_offset + page_size).min(self.entries.len().saturating_sub(1));
     }
 
     pub fn scroll_home(&mut self) {
@@ -149,13 +168,13 @@ impl App {
     }
 }
 
-pub fn format_mib(kib: u64) -> String {
-    let mib = kib as f64 / 1024.0;
-    if mib >= 1024.0 {
-        format!("{:.1} GiB", mib / 1024.0)
-    } else if mib >= 1.0 {
-        format!("{:.1} MiB", mib)
+pub fn format_mb(kb: u64) -> String {
+    let mb = kb as f64 / 1024.0;
+    if mb >= 1024.0 {
+        format!("{:.1} GB", mb / 1024.0)
+    } else if mb >= 1.0 {
+        format!("{:.1} MB", mb)
     } else {
-        format!("{:.0} KiB", kib as f64)
+        format!("{:.0} KB", kb as f64)
     }
 }

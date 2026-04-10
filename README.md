@@ -35,7 +35,7 @@ apptop [OPTIONS]
 | `-d`, `--delay <SECS>` | Refresh interval in seconds | `2.0` |
 | `-b`, `--batch` | Batch mode (non-interactive, prints to stdout) | off |
 | `-n`, `--iterations <N>` | Number of iterations (implies batch mode; 0 = unlimited) | `0` |
-| `-s`, `--sort <COL>` | Sort column: `pss`, `swap`, `total`, `procs`, `name` | `total` |
+| `-s`, `--sort <COL>` | Sort column: `user`, `procs`, `threads`, `pss`, `swap`, `total`, `oom`, `name` | `total` |
 
 ### Interactive Keys
 
@@ -44,7 +44,7 @@ apptop [OPTIONS]
 | `q` / `Esc` | Quit |
 | `s` | Cycle sort column |
 | `r` | Reverse sort order |
-| `1`–`5` | Sort by column (1=NPROC, 2=PSS, 3=SWAP, 4=TOTAL, 5=COMMAND) |
+| `1`–`8` | Sort by column (1=USER, 2=NPROC, 3=THR, 4=PSS, 5=SWAP, 6=TOTAL, 7=OOM, 8=COMMAND) |
 | `↑`/`k`, `↓`/`j` | Scroll up / down |
 | `PgUp` / `PgDn` | Page up / down |
 | `Home` / `End` | Jump to top / bottom |
@@ -69,10 +69,12 @@ apptop -b -d 5
 For every process directory in `/proc`, `apptop`:
 
 1. Resolves `/proc/<pid>/exe` to get the executable path.
-2. Reads `/proc/<pid>/smaps_rollup` and extracts **Pss** and **SwapPss** (in KiB).
-3. Identifies which *application* the process belongs to (see below).
-4. Aggregates memory values by resolved application identity.
-5. Displays sorted results in a terminal UI or batch output.
+2. Reads `/proc/<pid>/smaps_rollup` and extracts **Pss** and **SwapPss** (in KB).
+3. Reads `/proc/<pid>/oom_score` for the kernel OOM score and `/proc/<pid>/status` for the thread count.
+4. Resolves the owning **user** from the UID of the `/proc/<pid>` directory.
+5. Identifies which *application* the process belongs to (see below).
+6. Aggregates values by resolved application identity: memory is summed, threads are summed, OOM score takes the max across the app's processes, and the user is taken from the first process seen.
+7. Displays sorted results in a terminal UI or batch output.
 
 **PSS** (Proportional Set Size) fairly splits shared pages among all processes that map them, so the sum across all applications gives a realistic picture of total physical memory consumption.
 

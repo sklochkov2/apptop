@@ -71,6 +71,7 @@ dependencies = [
  "anyhow",
  "clap",
  "crossterm",
+ "libc",
  "ratatui",
 ]
 
