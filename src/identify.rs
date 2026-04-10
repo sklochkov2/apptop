@@ -13,7 +13,7 @@ use crate::proc::read_proc_file;
 /// small files (~100-700 bytes), while environ can be multiple KiB and is
 /// tried last to avoid the expense for the common case.
 pub fn resolve(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> String {
-    try_cgroup(pid_dir, buf)
+    try_cgroup(pid_dir, exe, buf)
         .or_else(|| try_interpreter(pid_dir, exe, buf))
         .or_else(|| try_environ(pid_dir, buf))
         .unwrap_or_else(|| exe.to_string())
@@ -23,7 +23,7 @@ pub fn resolve(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> String {
 // 1. Cgroup scope / service
 // ---------------------------------------------------------------------------
 
-fn try_cgroup(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<String> {
+fn try_cgroup(pid_dir: &Path, exe: &str, buf: &mut Vec<u8>) -> Option<String> {
     read_proc_file(&pid_dir.join("cgroup"), buf)?;
     let content = std::str::from_utf8(buf).ok()?;
     let cg_path = cgroup_path(content)?;
@@ -36,9 +36,21 @@ fn try_cgroup(pid_dir: &Path, buf: &mut Vec<u8>) -> Option<String> {
         return None;
     }
 
-    parse_app_scope(component)
+    let name = parse_app_scope(component)
         .or_else(|| parse_snap_unit(component))
-        .or_else(|| parse_system_service(&cg_path))
+        .or_else(|| parse_system_service(&cg_path))?;
+
+    // Electron/CEF apps that don't override their WM_CLASS / Wayland app-id
+    // inherit Chromium's default, so systemd places them in an
+    // `org.chromium.Chromium` scope even though they're a different app
+    // (e.g. Cisco Webex).  Cross-check against the exe path: if it doesn't
+    // look like an actual Chromium binary, let the cascade fall through to a
+    // more accurate heuristic.
+    if is_chromium_generic(&name) && !exe_looks_chromium(exe) {
+        return None;
+    }
+
+    Some(name)
 }
 
 /// Extract the cgroup path from `/proc/<pid>/cgroup` (supports v1 + v2).
@@ -336,6 +348,18 @@ fn is_terminal(name: &str) -> bool {
     TERMINALS.iter().any(|&t| name == t)
 }
 
+fn is_chromium_generic(name: &str) -> bool {
+    name.eq_ignore_ascii_case("org.chromium.Chromium")
+        || name.eq_ignore_ascii_case("chromium")
+        || name.eq_ignore_ascii_case("chromium-browser")
+}
+
+fn exe_looks_chromium(exe: &str) -> bool {
+    exe.as_bytes()
+        .windows(8)
+        .any(|w| w.eq_ignore_ascii_case(b"chromium"))
+}
+
 fn strip_deleted(s: &str) -> &str {
     s.strip_suffix(" (deleted)").unwrap_or(s)
 }
@@ -469,5 +493,29 @@ mod tests {
             unescape_systemd("a\\x2db\\x2ec"),
             "a-b.c"
         );
+    }
+
+    #[test]
+    fn chromium_generic_matches() {
+        assert!(is_chromium_generic("org.chromium.Chromium"));
+        assert!(is_chromium_generic("chromium"));
+        assert!(is_chromium_generic("chromium-browser"));
+        assert!(is_chromium_generic("Chromium-Browser"));
+        assert!(!is_chromium_generic("google-chrome"));
+        assert!(!is_chromium_generic("firefox"));
+    }
+
+    #[test]
+    fn exe_looks_chromium_positive() {
+        assert!(exe_looks_chromium("/usr/lib/chromium/chromium"));
+        assert!(exe_looks_chromium("/usr/lib/chromium-browser/chromium-browser"));
+        assert!(exe_looks_chromium("/snap/chromium/current/usr/lib/chromium-browser/chrome"));
+    }
+
+    #[test]
+    fn exe_looks_chromium_negative() {
+        assert!(!exe_looks_chromium("/opt/Webex/bin/CiscoCollabHost"));
+        assert!(!exe_looks_chromium("/usr/lib/firefox/firefox"));
+        assert!(!exe_looks_chromium("/opt/google/chrome/chrome"));
     }
 }
